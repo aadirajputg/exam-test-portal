@@ -68,45 +68,49 @@ Output strictly in valid JSON format matching this schema:
   ]
 }}
 """
-    try:
-        # Gemini 3.8 Flash कॉल (Google AI द्वारा अनुशंसित मॉडल)
-        response = ai.models.generate_content(
-            model="gemini-3.8-flash",
-            contents=prompt,
-            config={
-                "response_mime_type": "application/json"
-            }
-        )
-        
-        # क्लीन JSON पार्सिंग (मार्कडाउन बैकबिक्स हटाने के लिए)
-        raw_text = response.text.strip()
-        if raw_text.startswith("```json"):
-            raw_text = raw_text[7:]
-        if raw_text.startswith("```"):
-            raw_text = raw_text[3:]
-        if raw_text.endswith("```"):
-            raw_text = raw_text[:-3]
-        
-        data = json.loads(raw_text.strip())
-        
-        # Supabase में डेटा सुरक्षित रूप से इंसर्ट/अपडेट करना
-        db.table("daily_tests").upsert(
-            {
-                "exam_slug": exam["slug"],
-                "exam_title": exam["title"],
-                "test_date": str(date.today()),
-                "seo_summary": data.get("seo_summary", ""),
-                "questions": data.get("questions", [])
-            },
-            on_conflict="exam_slug,test_date"
-        ).execute()
-        
-        print(f"✓ {exam['title']} टेस्ट सफलतापूर्वक सेव हुआ।")
-    except Exception as e:
-        print(f"✗ एरर ({exam['slug']}): {e}")
+    # 503 लोड या सर्वर बिजी होने पर 3 बार ऑटो-रीट्राई
+    for attempt in range(3):
+        try:
+            response = ai.models.generate_content(
+                model="gemini-3.8-flash",
+                contents=prompt,
+                config={
+                    "response_mime_type": "application/json"
+                }
+            )
+            
+            raw_text = response.text.strip()
+            if raw_text.startswith("```json"):
+                raw_text = raw_text[7:]
+            if raw_text.startswith("```"):
+                raw_text = raw_text[3:]
+            if raw_text.endswith("```"):
+                raw_text = raw_text[:-3]
+            
+            data = json.loads(raw_text.strip())
+            
+            db.table("daily_tests").upsert(
+                {
+                    "exam_slug": exam["slug"],
+                    "exam_title": exam["title"],
+                    "test_date": str(date.today()),
+                    "seo_summary": data.get("seo_summary", ""),
+                    "questions": data.get("questions", [])
+                },
+                on_conflict="exam_slug,test_date"
+            ).execute()
+            
+            print(f"✓ {exam['title']} टेस्ट सफलतापूर्वक सेव हुआ।")
+            break
+        except Exception as e:
+            if "503" in str(e) and attempt < 2:
+                print(f"! Google सर्वर व्यस्त है ({exam['slug']}) - 6 सेकंड में पुनः प्रयास {attempt + 2}/3...")
+                time.sleep(6)
+            else:
+                print(f"✗ एरर ({exam['slug']}): {e}")
 
 if __name__ == "__main__":
     for item in EXAMS:
         generate_humanized_test(item)
-        time.sleep(3)
+        time.sleep(5)
     print("\nसभी 5 परीक्षाओं का डेटाबेस अपडेट पूरा हुआ!")
