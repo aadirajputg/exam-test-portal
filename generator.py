@@ -3,7 +3,6 @@ import json
 import time
 from datetime import date
 from google import genai
-from google.genai import types
 from supabase import create_client
 
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
@@ -54,7 +53,7 @@ def generate_humanized_test(exam):
 2. हर प्रश्न के 'explanation' में केवल सही उत्तर का कारण न लिखें, बल्कि उससे जुड़े 2 महत्वपूर्ण अतिरिक्त तथ्य भी जोड़ें ताकि छात्र को नया ज्ञान मिले (High Value Content for SEO)।
 3. 'seo_summary' में आज के मॉक टेस्ट का एक स्वाभाविक 100-120 शब्दों का सारांश लिखें जिसमें परीक्षा तैयारी के टिप्स शामिल हों।
 
-Output strictly in JSON format matching this schema:
+Output strictly in valid JSON format matching this schema:
 {{
   "seo_summary": "आज के इस अभ्यास सेट में...",
   "questions": [
@@ -70,20 +69,38 @@ Output strictly in JSON format matching this schema:
 }}
 """
     try:
+        # Gemini 3.8 Flash कॉल (Google AI द्वारा अनुशंसित मॉडल)
         response = ai.models.generate_content(
             model="gemini-3.8-flash",
             contents=prompt,
-            config=types.GenerateContentConfig(response_mime_type="application/json")
+            config={
+                "response_mime_type": "application/json"
+            }
         )
-        data = json.loads(response.text)
         
-        db.table("daily_tests").upsert({
-            "exam_slug": exam["slug"],
-            "exam_title": exam["title"],
-            "test_date": str(date.today()),
-            "seo_summary": data.get("seo_summary", ""),
-            "questions": data["questions"]
-        }).execute()
+        # क्लीन JSON पार्सिंग (मार्कडाउन बैकबिक्स हटाने के लिए)
+        raw_text = response.text.strip()
+        if raw_text.startswith("```json"):
+            raw_text = raw_text[7:]
+        if raw_text.startswith("```"):
+            raw_text = raw_text[3:]
+        if raw_text.endswith("```"):
+            raw_text = raw_text[:-3]
+        
+        data = json.loads(raw_text.strip())
+        
+        # Supabase में डेटा सुरक्षित रूप से इंसर्ट/अपडेट करना
+        db.table("daily_tests").upsert(
+            {
+                "exam_slug": exam["slug"],
+                "exam_title": exam["title"],
+                "test_date": str(date.today()),
+                "seo_summary": data.get("seo_summary", ""),
+                "questions": data.get("questions", [])
+            },
+            on_conflict="exam_slug,test_date"
+        ).execute()
+        
         print(f"✓ {exam['title']} टेस्ट सफलतापूर्वक सेव हुआ।")
     except Exception as e:
         print(f"✗ एरर ({exam['slug']}): {e}")
@@ -91,4 +108,5 @@ Output strictly in JSON format matching this schema:
 if __name__ == "__main__":
     for item in EXAMS:
         generate_humanized_test(item)
-        time.sleep(2)
+        time.sleep(3)
+    print("\nसभी 5 परीक्षाओं का डेटाबेस अपडेट पूरा हुआ!")
