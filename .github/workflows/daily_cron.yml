@@ -1,0 +1,21 @@
+name: Daily Questions Cron
+
+on:
+  schedule:
+    - cron: '30 18 * * *' # रोज़ रात भारतीय समयानुसार 12:00 AM (18:30 UTC)
+  workflow_dispatch:      # जब चाहें तब हाथ से चलाने के लिए बटन
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install google-genai supabase
+      - env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python generator.py
