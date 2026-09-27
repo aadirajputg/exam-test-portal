@@ -8,11 +8,11 @@ const supabase = createClient(
 )
 
 const EXAMS = [
-  { slug: 'up-super-tet', name: 'UP Super TET 2026', badge: '12,405 पद', icon: '🎓' },
-  { slug: 'ctet-uptet', name: 'CTET / UPTET', badge: 'Paper 1 & 2', icon: '📖' },
-  { slug: 'up-police', name: 'UP Police Constable', badge: 'New Batch', icon: '👮' },
-  { slug: 'upsssc-pet', name: 'UPSSSC PET', badge: 'PET 2026', icon: '🏛️' },
-  { slug: 'ssc-gd', name: 'SSC GD Constable', badge: 'Mock Set', icon: '🎯' },
+  { slug: 'up-super-tet', name: 'UP Super TET 2026', icon: '🎓' },
+  { slug: 'ctet-uptet', name: 'CTET / UPTET', icon: '📖' },
+  { slug: 'up-police', name: 'UP Police Constable', icon: '👮' },
+  { slug: 'upsssc-pet', name: 'UPSSSC PET', icon: '🏛️' },
+  { slug: 'ssc-gd', name: 'SSC GD Constable', icon: '🎯' },
 ]
 
 export default function Home() {
@@ -27,23 +27,37 @@ export default function Home() {
       setLoading(true)
       setSubmitted(false)
       setUserAnswers({})
-      const { data } = await supabase
-        .from('daily_tests')
-        .select('*')
-        .eq('exam_slug', selectedExam)
-        .order('test_date', { ascending: false })
-        .limit(1)
-        .single()
       
-      setTestData(data)
-      setLoading(false)
+      try {
+        const { data, error } = await supabase
+          .from('daily_tests')
+          .select('*')
+          .eq('exam_slug', selectedExam)
+          .order('created_at', { ascending: false })
+          .limit(1)
+
+        if (error) {
+          console.error("Supabase Error:", error)
+          setTestData(null)
+        } else if (data && data.length > 0) {
+          setTestData(data[0])
+        } else {
+          setTestData(null)
+        }
+      } catch (err) {
+        console.error("Fetch Exception:", err)
+        setTestData(null)
+      } finally {
+        setLoading(false)
+      }
     }
+
     fetchTest()
   }, [selectedExam])
 
   const handleSelectOption = (qIndex, oIndex) => {
     if (submitted) return
-    setUserAnswers({ ...userAnswers, [qIndex]: oIndex })
+    setUserAnswers(prev => ({ ...prev, [qIndex]: oIndex }))
   }
 
   const calculateScore = () => {
@@ -56,7 +70,7 @@ export default function Home() {
   return (
     <div className="space-y-6">
       {/* Category Pills */}
-      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
+      <div className="flex gap-2 overflow-x-auto pb-2">
         {EXAMS.map((exam) => (
           <button
             key={exam.slug}
@@ -74,10 +88,10 @@ export default function Home() {
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-slate-500">टेस्ट लोड हो रहा है...</div>
+        <div className="text-center py-12 text-slate-500 font-medium">टेस्ट लोड हो रहा है...</div>
       ) : !testData ? (
         <div className="text-center py-12 bg-white rounded-2xl border p-6">
-          <p className="text-slate-600">इस परीक्षा के लिए आज का टेस्ट अभी तैयार हो रहा है।</p>
+          <p className="text-slate-600 font-medium">इस परीक्षा के लिए आज का टेस्ट अभी तैयार हो रहा है।</p>
         </div>
       ) : (
         <div className="space-y-6">
@@ -89,7 +103,7 @@ export default function Home() {
 
           {/* Questions */}
           <div className="space-y-4">
-            {testData.questions.map((q, idx) => (
+            {testData.questions && testData.questions.map((q, idx) => (
               <div key={idx} className="bg-white p-5 rounded-2xl border shadow-sm space-y-3">
                 <div className="flex items-center gap-2 text-xs font-semibold text-blue-600">
                   <span className="bg-blue-50 px-2 py-0.5 rounded">{q.subject}</span>
@@ -100,7 +114,7 @@ export default function Home() {
                   {idx + 1}. {q.question}
                 </h3>
                 <div className="grid grid-cols-1 gap-2 pt-1">
-                  {q.options.map((opt, oIdx) => {
+                  {q.options && q.options.map((opt, oIdx) => {
                     let btnStyle = "border-slate-200 hover:bg-slate-50 text-slate-700"
                     if (userAnswers[idx] === oIdx) {
                       btnStyle = "border-blue-600 bg-blue-50 text-blue-900 font-medium"
@@ -144,7 +158,9 @@ export default function Home() {
             </button>
           ) : (
             <div className="bg-blue-600 text-white p-6 rounded-2xl text-center space-y-2 shadow-xl">
-              <h2 className="text-2xl font-black">आपका स्कोर: {calculateScore()} / {testData.questions.length}</h2>
+              <h2 className="text-2xl font-black">
+                आपका स्कोर: {calculateScore()} / {testData.questions ? testData.questions.length : 0}
+              </h2>
               <p className="text-blue-100 text-sm">शानदार प्रयास! सभी प्रश्नों की व्याख्या ऊपर दी गई है।</p>
               <button
                 onClick={() => {
