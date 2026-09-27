@@ -71,7 +71,7 @@ Output strictly in valid JSON format matching this schema:
     try:
         # Gemini 3.8 Flash कॉल (Google AI द्वारा अनुशंसित मॉडल)
         response = ai.models.generate_content(
-            model="gemini-3.6-flash",
+            model="gemini-3.8-flash",
             contents=prompt,
             config={
                 "response_mime_type": "application/json"
